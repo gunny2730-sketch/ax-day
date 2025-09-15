@@ -55,7 +55,7 @@
                placeholder="예) 김우진" />
         <button id="assignBtn" class="bg-sky-600 text-white font-semibold px-6 rounded-lg hover:bg-sky-700">배정하기</button>
       </div>
-      <p class="text-xs text-gray-500 mt-2">· URL만 있으면 누구나 입력 가능 · 한 사람이 여러 번 입력하지 않도록 현장 안내 권장</p>
+      <p class="text-xs text-gray-500 mt-2">· URL만 있으면 누구나 입력 가능 · 한 사람이 여러 번 입력하지 않도록 안내 필요</p>
     </div>
 
     <div class="flex flex-col gap-8">
@@ -74,12 +74,10 @@
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
     import { v4 as uuidv4 } from "https://esm.sh/uuid@9";
 
-    // Supabase 프로젝트 정보
+    // Supabase 연결
     const SUPABASE_URL = "https://ewfbnjmofbvszelndpmm.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3ZmJuam1vZmJ2c3plbG5kcG1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc5MTg5OTIsImV4cCI6MjA3MzQ5NDk5Mn0.wnrK_4sVXlmumfs0IIqShSAk9XkEnslu7upzS91j0TQ";
-
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    window.supabase = supabase;
 
     // DOM
     const uidBox = document.getElementById('uidBox');
@@ -104,7 +102,7 @@
     const dinTeamNames = ['팀 A','팀 B','팀 C','팀 D'];
     const dinSizes     = [6,6,6,4];
 
-    // 랜덤 UID (브라우저 새로고침/기기마다 달라짐)
+    // 랜덤 UID
     let user = { id: uuidv4() };
     uidBox.textContent = `현재 사용자 ID: ${user.id}`;
 
@@ -170,7 +168,6 @@
       renderCards(expContainer, expTeamNames, expSizes, expGroup);
       renderCards(dinContainer, dinTeamNames, dinSizes, dinGroup);
 
-      // 프론트에서 한 사람 1회 제한(약식)
       const mine = all.find(m => m.user_id === user.id);
       const disabled = !!mine;
       nameInput.disabled = disabled;
@@ -209,21 +206,19 @@
       if (all.length >= totalMax) return alert('모든 좌석이 채워졌습니다.');
       if (all.some(m => m.name === name)) return alert('이미 존재하는 이름입니다.');
 
-      const { data: ins, error } = await supabase.from('members').insert({
-        name, user_id: user.id, assigned: false, dining_team: '', experience_team: ''
-      }).select('*').single();
-
-      if (error) { alert(error.message || '추가 실패'); return; }
-
       const expTeam = pickExperienceTeam();
       const dinTeam = pickDiningTeam(expTeam);
 
-      const { error: upErr } = await supabase.from('members').update({
-        assigned: true, experience_team: expTeam, dining_team: dinTeam
-      }).eq('id', ins.id);
+      const { error } = await supabase.from('members').insert({
+        name,
+        user_id: user.id,
+        assigned: true,              // ← 바로 배정
+        experience_team: expTeam,
+        dining_team: dinTeam
+      });
 
-      if (upErr) alert(upErr.message || '배정 실패');
-      else nameInput.value = '';
+      if (error) { alert(error.message || '추가 실패'); return; }
+      nameInput.value = '';
     }
 
     assignBtn.addEventListener('click', addName);
@@ -237,7 +232,7 @@
       dinTeamNames.forEach((nm, i) => rows.push([nm].concat(dinMap[i]).join(',')));
       rows.push('');
       rows.push('체험조');
-      expTeamNames.forEach((nm, i) => rows.push([nm].concat(expMap[i]).join('')));
+      expTeamNames.forEach((nm, i) => rows.push([nm].concat(expMap[i]).join(',')));
       const csv = "\uFEFF" + rows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
