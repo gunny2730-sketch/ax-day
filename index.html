@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>AX-DAY 랜덤 조 편성</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+  <div class="bg-white rounded-3xl shadow-xl border p-6 max-w-3xl w-full">
+    <h1 class="text-2xl font-bold mb-4">AX-DAY 랜덤 조 편성 앱 (Supabase)</h1>
+    <p class="mb-2 text-gray-600">GitHub Pages로 배포할 수 있습니다.</p>
+    <p class="text-sm text-gray-400">이곳에 Supabase URL과 anon key를 넣으세요.</p>
+    <script type="module">
+      import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+      const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+      const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log("Supabase client ready:", supabase);
+    </script>
+  </div>
+</body>
+</html>
