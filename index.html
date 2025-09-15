@@ -1,654 +1,283 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>공동 참여형 랜덤 조 편성 앱</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f4f8;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 24px;
-        }
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.9);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-        }
-        .team-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 16px;
-        }
-        .card-container {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        }
-        .card-container:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
-        }
-        .message-box-enter {
-            animation: fadeIn 0.3s ease-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>AX-DAY · 체험조 & 식사조 (Supabase Realtime)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#f3f4f6; font-family: ui-sans-serif, system-ui; }
+    .team-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap:16px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+  </style>
 </head>
-<body class="bg-gray-100">
-    <!-- 로딩 오버레이 -->
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="text-center">
-            <i class="fas fa-spinner fa-spin text-5xl text-blue-600 mb-4"></i>
-            <p class="text-xl font-semibold text-gray-700">데이터를 불러오는 중입니다...</p>
-        </div>
-    </div>
-    
-    <!-- 메인 컨테이너 -->
-    <div id="main-content" class="bg-white p-6 md:p-10 rounded-3xl shadow-2xl w-full max-w-6xl border border-gray-200" style="display: none;">
-        
-        <!-- 상단 헤더 섹션 -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-            <div class="mb-4 md:mb-0">
-                <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900">AX-DAY · 체험조 & 식사조</h1>
-                <p class="text-gray-500 mt-2 text-sm md:text-base">
-                    이름을 입력하시면 조가 자동 편성 됩니다.
-                </p>
-            </div>
-            <div class="flex gap-2">
-                <button id="export-csv-button" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-xl shadow-sm hover:bg-gray-300 transition-colors">
-                    결과 CSV
-                </button>
-                <button id="reset-button" class="bg-rose-500 text-white font-bold py-2 px-4 rounded-xl shadow-sm hover:bg-rose-600 transition-colors" style="display: none;">
-                    초기화
-                </button>
-            </div>
-        </div>
-
-        <!-- 사용자 정보 및 링크 -->
-        <div id="user-info" class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-sm md:text-base text-gray-600 flex flex-col md:flex-row items-center justify-between">
-            <span id="user-id-display" class="font-medium text-center md:text-left mb-2 md:mb-0"></span>
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400">링크 공유:</span>
-                <span id="copy-link-button" class="cursor-pointer text-sky-500 hover:text-sky-700 transition-colors">
-                    <i class="fas fa-link mr-1"></i>URL 복사
-                </span>
-            </div>
-        </div>
-        
-        <!-- 현황판 섹션 -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-blue-50 p-4 rounded-xl text-center border border-blue-100">
-                <p class="text-sm text-gray-500">체험조 정원</p>
-                <p id="experience-count" class="text-2xl font-bold text-blue-600">0/22</p>
-            </div>
-            <div class="bg-orange-50 p-4 rounded-xl text-center border border-orange-100">
-                <p class="text-sm text-gray-500">식사조 정원</p>
-                <p id="dining-count" class="text-2xl font-bold text-orange-600">0/22</p>
-            </div>
-            <div class="bg-sky-50 p-4 rounded-xl text-center border border-sky-100">
-                <p class="text-sm text-gray-500">총 인원</p>
-                <p id="total-members" class="text-2xl font-bold text-sky-600">0명</p>
-            </div>
-            <div class="bg-gray-50 p-4 rounded-xl text-center border border-gray-100">
-                <p class="text-sm text-gray-500">남은 좌석</p>
-                <p id="remaining-seats" class="text-2xl font-bold text-gray-600">22</p>
-            </div>
-        </div>
-
-        <!-- 이름 입력 및 배정 버튼 -->
-        <div class="mb-8">
-            <h3 class="text-lg font-bold text-gray-700 mb-2">이름 입력</h3>
-            <div class="flex items-center gap-2">
-                <input type="text" id="name-input" placeholder="예) 김우진" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all">
-                <button id="assign-button" class="bg-sky-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:bg-sky-700 transition-all duration-300">
-                    배정하기
-                </button>
-            </div>
-        </div>
-
-        <!-- 현황판 -->
-        <div class="flex flex-col gap-8" id="assignment-status">
-            <!-- 식사조 현황 -->
-            <div class="bg-orange-100 p-6 rounded-xl shadow-inner border border-orange-200">
-                <h2 class="text-xl font-bold text-orange-800 mb-4">식사조 배정 현황</h2>
-                <div class="team-grid" id="dining-teams-container">
-                    <!-- 팀 카드가 여기에 동적으로 생성됩니다. -->
-                </div>
-            </div>
-            
-            <!-- 체험조 현황 -->
-            <div class="bg-blue-100 p-6 rounded-xl shadow-inner border border-blue-200">
-                <h2 class="text-xl font-bold text-blue-800 mb-4">체험조 배정 현황</h2>
-                <div class="team-grid" id="experience-teams-container">
-                    <!-- 팀 카드가 여기에 동적으로 생성됩니다. -->
-                </div>
-            </div>
-        </div>
-
-        <!-- 메시지 박스 -->
-        <div id="message-box" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
-            <div class="bg-white p-6 rounded-lg shadow-xl text-center max-w-sm mx-4 message-box-enter">
-                <p id="message-text" class="text-gray-800 font-semibold mb-4"></p>
-                <button id="close-message" class="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors">확인</button>
-            </div>
-        </div>
+<body class="min-h-screen flex items-center justify-center p-6">
+  <div class="w-full max-w-6xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6 md:p-10">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-6">
+      <div>
+        <h1 class="text-3xl md:text-4xl font-extrabold">AX-DAY · 체험조 & 식사조</h1>
+        <p class="text-gray-500 mt-2">이름을 입력하면 자동 배정 · 실시간 동기화 됩니다.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="exportCsv" class="bg-gray-200 text-gray-700 font-semibold px-4 py-2 rounded-xl hover:bg-gray-300">결과 CSV</button>
+        <button id="resetBtn" class="hidden bg-rose-500 text-white font-semibold px-4 py-2 rounded-xl hover:bg-rose-600">초기화(creator)</button>
+      </div>
     </div>
 
-    <!-- Firebase SDK 및 앱 로직 스크립트 -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, addDoc, query, where, getDocs, doc, setDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mb-6 text-sm text-gray-600">
+      <div id="uidBox" class="px-3 py-2 bg-gray-50 border border-gray-200 rounded">로그인 중...</div>
+      <div class="flex gap-3">
+        <button id="copyUrl" class="text-sky-600 hover:text-sky-800">URL 복사</button>
+        <a href="README.html" class="text-gray-500 hover:text-gray-700" target="_blank">설정 도움말</a>
+      </div>
+    </div>
 
-        // Firebase 로깅 활성화 (디버깅용)
-        setLogLevel('debug');
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-blue-50 p-4 rounded-xl text-center border border-blue-100">
+        <p class="text-sm text-gray-500">체험조 정원</p>
+        <p id="expCount" class="text-2xl font-bold text-blue-600">0/22</p>
+      </div>
+      <div class="bg-orange-50 p-4 rounded-xl text-center border border-orange-100">
+        <p class="text-sm text-gray-500">식사조 정원</p>
+        <p id="dinCount" class="text-2xl font-bold text-orange-600">0/22</p>
+      </div>
+      <div class="bg-sky-50 p-4 rounded-xl text-center border border-sky-100">
+        <p class="text-sm text-gray-500">총 인원</p>
+        <p id="totalCount" class="text-2xl font-bold text-sky-600">0명</p>
+      </div>
+      <div class="bg-gray-50 p-4 rounded-xl text-center border border-gray-100">
+        <p class="text-sm text-gray-500">남은 좌석</p>
+        <p id="remain" class="text-2xl font-bold">22</p>
+      </div>
+    </div>
 
-        // Firestore 전역 변수 설정
-        const firebaseConfig = {
-            apiKey: "AIzaSyCRHnrrEhusO4R3DFrYLIUMemNZQ-kakP4",
-            authDomain: "ax-day.firebaseapp.com",
-            projectId: "ax-day",
-            storageBucket: "ax-day.firebasestorage.app",
-            messagingSenderId: "501397094154",
-            appId: "1:501397094154:web:fa29d50cab84b9c3b044f3",
-            measurementId: "G-T6LS1VJCBD"
-        };
-        const appId = 'ax-day-team-assignment';
-        const initialAuthToken = null;
+    <div class="mb-8">
+      <h3 class="text-lg font-bold text-gray-700 mb-2">이름 입력</h3>
+      <div class="flex gap-2">
+        <input id="nameInput" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+               placeholder="예) 김우진" />
+        <button id="assignBtn" class="bg-sky-600 text-white font-semibold px-6 rounded-lg hover:bg-sky-700">배정하기</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-2">· 한 사람당 1회만 입력 가능 · 본인 레코드만 수정됩니다</p>
+    </div>
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        
-        // DOM 요소 캐싱
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const mainContent = document.getElementById('main-content');
-        const nameInput = document.getElementById('name-input');
-        const assignButton = document.getElementById('assign-button');
-        const totalMembersSpan = document.getElementById('total-members');
-        const remainingSeatsSpan = document.getElementById('remaining-seats');
-        const experienceCountSpan = document.getElementById('experience-count');
-        const diningCountSpan = document.getElementById('dining-count');
-        const experienceTeamsContainer = document.getElementById('experience-teams-container');
-        const diningTeamsContainer = document.getElementById('dining-teams-container');
-        const exportCsvButton = document.getElementById('export-csv-button');
-        const resetButton = document.getElementById('reset-button');
-        const messageBox = document.getElementById('message-box');
-        const messageText = document.getElementById('message-text');
-        const closeMessageButton = document.getElementById('close-message');
-        const copyLinkButton = document.getElementById('copy-link-button');
-        const userIdDisplay = document.getElementById('user-id-display');
+    <div class="flex flex-col gap-8">
+      <div class="p-6 rounded-xl border border-orange-200 bg-orange-100">
+        <h2 class="text-xl font-bold text-orange-800 mb-4">식사조 ABCD</h2>
+        <div id="dinContainer" class="team-grid"></div>
+      </div>
+      <div class="p-6 rounded-xl border border-blue-200 bg-blue-100">
+        <h2 class="text-xl font-bold text-blue-800 mb-4">체험조 1~6</h2>
+        <div id="expContainer" class="team-grid"></div>
+      </div>
+    </div>
+  </div>
 
-        // 앱 상수 및 상태 변수
-        const totalMaxMembers = 22;
-        let currentUser = null;
-        let isAuthReady = false;
-        let allMembers = [];
-        let unsubscribeFromMembers = null;
-        let creatorId = null;
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-        // 팀 구성 정의 (변경 불가능)
-        const experienceTeamSizes = [4, 4, 4, 4, 3, 3];
-        const diningTeamSizes = [6, 6, 6, 4];
-        const experienceTeamNames = ['팀 1', '팀 2', '팀 3', '팀 4', '팀 5', '팀 6'];
-        const diningTeamNames = ['팀 A', '팀 B', '팀 C', '팀 D'];
+    // === ① 여기를 본인 프로젝트로 교체하세요 ===
+    const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+    const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";
+    // ===========================================
 
-        /**
-         * 커스텀 메시지 박스를 표시합니다.
-         * @param {string} message - 표시할 메시지
-         */
-        function showMessageBox(message) {
-            messageText.textContent = message;
-            messageBox.classList.remove('hidden');
-        }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // 메시지 박스 닫기 이벤트 리스너
-        closeMessageButton.addEventListener('click', () => {
-            messageBox.classList.add('hidden');
-        });
+    // DOM refs
+    const uidBox = document.getElementById('uidBox');
+    const nameInput = document.getElementById('nameInput');
+    const assignBtn = document.getElementById('assignBtn');
+    const exportCsv = document.getElementById('exportCsv');
+    const resetBtn = document.getElementById('resetBtn');
+    const copyUrl = document.getElementById('copyUrl');
 
-        /**
-         * 팀 카드 DOM 요소를 생성합니다.
-         * @param {string} teamName - 팀 이름
-         * @param {number} teamSize - 팀 최대 인원
-         * @param {Array<string>} members - 현재 팀원 이름 목록
-         * @returns {HTMLElement} - 생성된 카드 요소
-         */
-        function createTeamCard(teamName, teamSize, members = []) {
-            const card = document.createElement('div');
-            card.className = 'card-container bg-white p-5 rounded-2xl shadow-md border border-gray-200';
-            const memberCount = members.length;
-            const memberListHTML = members.map(name => `<li class="text-gray-600 text-sm break-words">${name}</li>`).join('');
-            
-            card.innerHTML = `
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-gray-800">${teamName}</h3>
-                    <span class="text-xs font-semibold text-gray-500">${memberCount}/${teamSize}</span>
-                </div>
-                <ul class="list-none space-y-1" id="${teamName}-list">
-                    ${memberListHTML}
-                </ul>
-            `;
-            return card;
-        }
+    const expCount = document.getElementById('expCount');
+    const dinCount = document.getElementById('dinCount');
+    const totalCount = document.getElementById('totalCount');
+    const remain = document.getElementById('remain');
 
-        /**
-         * 초기 팀 현황판을 렌더링합니다.
-         */
-        function renderInitialStatus() {
-            diningTeamsContainer.innerHTML = '';
-            experienceTeamsContainer.innerHTML = '';
-            
-            diningTeamNames.forEach((team, index) => {
-                diningTeamsContainer.appendChild(createTeamCard(team, diningTeamSizes[index]));
-            });
+    const expContainer = document.getElementById('expContainer');
+    const dinContainer = document.getElementById('dinContainer');
 
-            experienceTeamNames.forEach((team, index) => {
-                experienceTeamsContainer.appendChild(createTeamCard(team, experienceTeamSizes[index]));
-            });
-        }
+    // 팀 정의
+    const totalMax = 22;
+    const expTeamNames = ['팀 1','팀 2','팀 3','팀 4','팀 5','팀 6'];
+    const expSizes     = [4,4,4,4,3,3];
+    const dinTeamNames = ['팀 A','팀 B','팀 C','팀 D'];
+    const dinSizes     = [6,6,6,4];
 
-        /**
-         * Firebase 인증 상태 변경 리스너를 설정하고 초기 로직을 실행합니다.
-         */
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                currentUser = user;
-                isAuthReady = true;
-                loadingOverlay.style.display = 'none';
-                mainContent.style.display = 'block';
-                await setupCreatorCheck();
-                setupFirestoreListeners();
-                userIdDisplay.textContent = `현재 사용자 ID: ${currentUser.uid}`;
-            } else {
-                if (initialAuthToken) {
-                    try {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } catch (err) {
-                        console.error("Custom token sign-in failed, falling back to anonymous:", err);
-                        await signInAnonymously(auth);
-                    }
-                } else {
-                    await signInAnonymously(auth);
-                }
-            }
-        });
+    let user = null;
+    let all = [];
 
-        /**
-         * 앱 생성자 ID를 확인하고 설정합니다.
-         * 생성자에게만 초기화 버튼을 표시합니다.
-         */
-        async function setupCreatorCheck() {
-            try {
-                const creatorDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'app_metadata', 'creator');
-                const creatorDoc = await getDoc(creatorDocRef);
-                
-                if (creatorDoc.exists()) {
-                    creatorId = creatorDoc.data().uid;
-                } else {
-                    await setDoc(creatorDocRef, { uid: currentUser.uid });
-                    creatorId = currentUser.uid;
-                }
-                updateUIBasedOnCreator();
-            } catch (e) {
-                console.error("Error setting up creator check:", e);
-            }
-        }
+    // 익명 로그인 + 초기 로딩
+    (async () => {
+      const { data: signData, error: signErr } = await supabase.auth.signInAnonymously();
+      if (signErr) console.error(signErr);
+      const got = await supabase.auth.getUser();
+      user = got.data.user;
+      uidBox.textContent = `현재 사용자 ID: ${user?.id || '알 수 없음'}`;
+      await toggleResetForCreator();
+      await loadMembers();
+      subscribeRealtime();
+    })();
 
-        /**
-         * 현재 사용자가 생성자인지에 따라 UI를 업데이트합니다.
-         */
-        function updateUIBasedOnCreator() {
-            if (currentUser && creatorId && currentUser.uid === creatorId) {
-                resetButton.style.display = 'inline-block';
-            } else {
-                resetButton.style.display = 'none';
-            }
-        }
+    async function toggleResetForCreator() {
+      const { data, error } = await supabase.from('app_metadata').select('*').eq('key','creator').maybeSingle();
+      if (!error && data?.value?.uid && data.value.uid === user.id) {
+        resetBtn.classList.remove('hidden');
+      }
+    }
 
-        /**
-         * Firestore 실시간 리스너를 설정하여 멤버 데이터 변화를 감지합니다.
-         */
-        function setupFirestoreListeners() {
-            if (unsubscribeFromMembers) {
-                return;
-            }
+    async function loadMembers() {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (!error) {
+        all = data || [];
+        renderAll();
+      }
+    }
 
-            const membersCollectionRef = collection(db, `artifacts/${appId}/public/data/members`);
-            unsubscribeFromMembers = onSnapshot(membersCollectionRef, (snapshot) => {
-                allMembers = [];
-                let hasMyName = false;
-                
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    allMembers.push({ id: doc.id, ...data });
-                    if (currentUser && data.userId === currentUser.uid) {
-                        hasMyName = true;
-                    }
-                });
-                
-                // 인원수 업데이트
-                const currentCount = allMembers.length;
-                totalMembersSpan.textContent = `${currentCount}명`;
-                remainingSeatsSpan.textContent = `${totalMaxMembers - currentCount}`;
-                experienceCountSpan.textContent = `${currentCount}/22`;
-                diningCountSpan.textContent = `${currentCount}/22`;
+    function subscribeRealtime() {
+      supabase.channel('members-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, async () => {
+          await loadMembers();
+        })
+        .subscribe();
+    }
 
-                // 자동으로 조를 배정합니다.
-                handleAssignment();
+    function renderCards(container, names, sizes, grouped) {
+      container.innerHTML = '';
+      names.forEach((nm, i) => {
+        const members = grouped[i] || [];
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = \`
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-bold">\${nm}</div>
+            <div class="text-xs text-gray-500">\${members.length}/\${sizes[i]}</div>
+          </div>
+          <ul class="space-y-1">\${members.map(m=>\`<li class="text-sm text-gray-700 break-words">\${m.name}</li>\`).join('')}</ul>
+        \`;
+        container.appendChild(card);
+      });
+    }
 
-                // 이미 이름을 입력한 사용자의 입력 필드를 비활성화합니다.
-                if (hasMyName) {
-                    nameInput.disabled = true;
-                    assignButton.disabled = true;
-                    nameInput.placeholder = '이미 이름을 입력하셨습니다.';
-                } else {
-                    nameInput.disabled = false;
-                    assignButton.disabled = false;
-                    nameInput.placeholder = '예) 김우진';
-                }
+    function renderAll() {
+      const assigned = all.filter(m => m.assigned);
+      totalCount.textContent = \`\${all.length}명\`;
+      remain.textContent = Math.max(0, totalMax - all.length);
+      expCount.textContent = \`\${all.length}/22\`;
+      dinCount.textContent = \`\${all.length}/22\`;
 
-            }, (error) => {
-                console.error("Error in onSnapshot listener:", error);
-                if (error.code === 'permission-denied') {
-                    showMessageBox("데이터를 불러오는 데 권한이 없습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해주세요.");
-                }
-            });
-        }
-        
-        /**
-         * 이름 입력 및 배정 로직을 처리합니다.
-         */
-        nameInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                addName();
-            }
-        });
+      const expGroup = expTeamNames.map(()=>[]);
+      const dinGroup = dinTeamNames.map(()=>[]);
+      for (const m of assigned) {
+        const ei = expTeamNames.indexOf(m.experience_team);
+        if (ei >= 0) expGroup[ei].push(m);
+        const di = dinTeamNames.indexOf(m.dining_team);
+        if (di >= 0) dinGroup[di].push(m);
+      }
+      renderCards(expContainer, expTeamNames, expSizes, expGroup);
+      renderCards(dinContainer, dinTeamNames, dinSizes, dinGroup);
 
-        assignButton.addEventListener('click', () => {
-            addName();
-        });
+      const mine = all.find(m => m.user_id === user?.id);
+      const disabled = !!mine;
+      nameInput.disabled = disabled;
+      assignBtn.disabled = disabled;
+      nameInput.placeholder = disabled ? '이미 이름을 입력하셨습니다.' : '예) 김우진';
+    }
 
-        async function addName() {
-            if (!isAuthReady) {
-                showMessageBox("사용자 인증 준비 중입니다. 잠시 후 다시 시도해주세요.");
-                return;
-            }
+    // 배정 로직(본인 레코드만 수정)
+    function pickExperienceTeam() {
+      const counts = expTeamNames.map((_, i) => all.filter(m => m.assigned && m.experience_team === expTeamNames[i]).length);
+      const avail = expTeamNames
+        .map((nm, i) => ({ i, left: expSizes[i] - counts[i] }))
+        .filter(x => x.left > 0);
+      if (avail.length === 0) return '';
+      const maxLeft = Math.max(...avail.map(x => x.left));
+      const candidates = avail.filter(x => x.left === maxLeft);
+      const chosen = candidates[Math.floor(Math.random()*candidates.length)];
+      return expTeamNames[chosen.i];
+    }
 
-            const name = nameInput.value.trim();
-            if (name === '') {
-                showMessageBox("이름을 입력해주세요.");
-                return;
-            }
+    function pickDiningTeam(assignedExpTeam) {
+      const dinCounts = dinTeamNames.map((_, i) => all.filter(m => m.assigned && m.dining_team === dinTeamNames[i]).length);
+      const avail = dinTeamNames
+        .map((nm, i) => ({ i, left: dinSizes[i] - dinCounts[i] }))
+        .filter(x => x.left > 0);
+      if (avail.length === 0) return '';
 
-            if (allMembers.some(member => member.name === name)) {
-                showMessageBox("이미 존재하는 이름입니다. 다른 이름을 사용해주세요.");
-                return;
-            }
-            
-            if (allMembers.length >= totalMaxMembers) {
-                    showMessageBox("모든 좌석이 채워졌습니다.");
-                    return;
-            }
+      const scored = avail.map(a => {
+        const inThisTeam = all.filter(m => m.assigned && m.dining_team === dinTeamNames[a.i]);
+        const overlap = inThisTeam.filter(m => m.experience_team === assignedExpTeam).length;
+        return { i: a.i, overlap, left: a.left };
+      });
+      scored.sort((a,b) => (a.overlap - b.overlap) || (b.left - a.left));
+      return dinTeamNames[scored[0].i];
+    }
 
-            try {
-                // 사용자가 이미 이름을 입력했는지 확인
-                const membersCollectionRef = collection(db, `artifacts/${appId}/public/data/members`);
-                const q = query(membersCollectionRef, where("userId", "==", currentUser.uid));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    showMessageBox("이미 이름을 입력하셨습니다. 다른 사람의 이름이 추가될 때마다 자동으로 인원수가 업데이트됩니다.");
-                    return;
-                }
+    async function addName() {
+      const name = nameInput.value.trim();
+      if (!name) return alert('이름을 입력해주세요.');
+      if (all.length >= totalMax) return alert('모든 좌석이 채워졌습니다.');
+      if (all.some(m => m.name === name)) return alert('이미 존재하는 이름입니다.');
 
-                await addDoc(membersCollectionRef, {
-                    name: name,
-                    userId: currentUser.uid,
-                    timestamp: new Date(),
-                    assigned: false,
-                    diningTeam: '',
-                    experienceTeam: ''
-                });
-                nameInput.value = '';
-            } catch (e) {
-                console.error("Error adding document: ", e);
-                if (e.code === 'permission-denied') {
-                    showMessageBox("데이터를 추가할 권한이 없습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해주세요.");
-                } else {
-                    showMessageBox("이름 추가에 실패했습니다. 다시 시도해주세요.");
-                }
-            }
-        }
-        
-        /**
-         * 멤버가 추가될 때마다 조 배정을 수행합니다.
-         */
-        async function handleAssignment() {
-            // 배정이 필요한 멤버가 없으면 그냥 렌더링만 합니다.
-            if (allMembers.length === 0) {
-                renderInitialStatus();
-                return;
-            }
-            
-            const unassignedMembers = allMembers.filter(member => !member.assigned);
-            
-            // 모든 멤버가 이미 배정되었으면 재배정 없이 렌더링만 합니다.
-            if (unassignedMembers.length === 0) {
-                    renderTeams();
-                    return;
-            }
-            
-            // 기존 배정 현황을 가져와서 맵으로 정리합니다.
-            const existingExpTeams = experienceTeamNames.reduce((acc, name) => ({ ...acc, [name]: [] }), {});
-            const existingDinTeams = diningTeamNames.reduce((acc, name) => ({ ...acc, [name]: [] }), {});
+      const { data: ins, error } = await supabase.from('members').insert({
+        name, user_id: user.id, assigned: false, dining_team: '', experience_team: ''
+      }).select('*').single();
 
-            allMembers.forEach(member => {
-                if (member.assigned) {
-                    existingExpTeams[member.experienceTeam].push(member.name);
-                    existingDinTeams[member.diningTeam].push(member.name);
-                }
-            });
+      if (error) { alert(error.message || '추가 실패'); return; }
 
-            // 아직 배정되지 않은 멤버들만 셔플합니다.
-            const shuffledUnassigned = unassignedMembers.sort(() => Math.random() - 0.5);
+      const expTeam = pickExperienceTeam();
+      const dinTeam = pickDiningTeam(expTeam);
 
-            for (const member of shuffledUnassigned) {
-                let assignedExpTeam = '';
-                let assignedDinTeam = '';
-                
-                // 1. 체험조 배정: 빈 자리가 있는 체험조 중 무작위로 선택
-                const availableExpTeams = experienceTeamNames.filter(teamName => existingExpTeams[teamName].length < experienceTeamSizes[experienceTeamNames.indexOf(teamName)]);
-                if (availableExpTeams.length > 0) {
-                    const selectedExpTeam = availableExpTeams[Math.floor(Math.random() * availableExpTeams.length)];
-                    existingExpTeams[selectedExpTeam].push(member.name);
-                    assignedExpTeam = selectedExpTeam;
-                }
+      const { error: upErr } = await supabase.from('members').update({
+        assigned: true, experience_team: expTeam, dining_team: dinTeam
+      }).eq('id', ins.id);
 
-                // 2. 식사조 배정: 체험조와 겹치지 않는 팀을 우선적으로 찾습니다.
-                const availableDinTeams = diningTeamNames
-                    .filter(teamName => existingDinTeams[teamName].length < diningTeamSizes[diningTeamNames.indexOf(teamName)])
-                    .sort((a, b) => {
-                        const membersInA = existingDinTeams[a].map(name => {
-                            const foundMember = allMembers.find(m => m.name === name);
-                            return foundMember ? foundMember.experienceTeam : null;
-                        });
-                        const membersInB = existingDinTeams[b].map(name => {
-                            const foundMember = allMembers.find(m => m.name === name);
-                            return foundMember ? foundMember.experienceTeam : null;
-                        });
-                        const overlapA = membersInA.filter(expTeam => expTeam === assignedExpTeam).length;
-                        const overlapB = membersInB.filter(expTeam => expTeam === assignedExpTeam).length;
-                        return overlapA - overlapB;
-                    });
-                
-                if (availableDinTeams.length > 0) {
-                    const selectedDinTeam = availableDinTeams[0]; // 가장 겹침이 적은 팀
-                    existingDinTeams[selectedDinTeam].push(member.name);
-                    assignedDinTeam = selectedDinTeam;
-                }
+      if (upErr) alert(upErr.message || '배정 실패');
+      else nameInput.value = '';
+    }
 
-                // Firestore에 배정 결과 업데이트
-                const docRef = doc(db, `artifacts/${appId}/public/data/members`, member.id);
-                try {
-                    await setDoc(docRef, {
-                        ...member,
-                        assigned: true,
-                        diningTeam: assignedDinTeam,
-                        experienceTeam: assignedExpTeam
-                    });
-                } catch (e) {
-                    console.error("Error updating member assignment:", e);
-                }
-            }
-            renderTeams();
-        }
+    assignBtn.addEventListener('click', addName);
+    nameInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') addName(); });
 
-        /**
-         * Firestore 데이터에 기반하여 팀 현황을 렌더링합니다.
-         */
-        function renderTeams() {
-            const diningTeamMembers = diningTeamNames.map(() => []);
-            const experienceTeamMembers = experienceTeamNames.map(() => []);
+    exportCsv.addEventListener('click', () => {
+      const rows = [];
+      const expMap = expTeamNames.map(nm => all.filter(m => m.assigned && m.experience_team === nm).map(m=>m.name));
+      const dinMap = dinTeamNames.map(nm => all.filter(m => m.assigned && m.dining_team === nm).map(m=>m.name));
 
-            allMembers.forEach(member => {
-                if (member.assigned) {
-                    const diningIndex = diningTeamNames.indexOf(member.diningTeam);
-                    if (diningIndex !== -1) {
-                        diningTeamMembers[diningIndex].push(member.name);
-                    }
-                    const experienceIndex = experienceTeamNames.indexOf(member.experienceTeam);
-                    if (experienceIndex !== -1) {
-                        experienceTeamMembers[experienceIndex].push(member.name);
-                    }
-                }
-            });
+      rows.push('식사조');
+      dinTeamNames.forEach((nm, i) => rows.push([nm].concat(dinMap[i]).join(',')));
+      rows.push('');
+      rows.push('체험조');
+      expTeamNames.forEach((nm, i) => rows.push([nm].concat(expMap[i]).join(',')));
 
-            updateTeamCards(diningTeamsContainer, diningTeamNames, diningTeamSizes, diningTeamMembers);
-            updateTeamCards(experienceTeamsContainer, experienceTeamNames, experienceTeamSizes, experienceTeamMembers);
-        }
+      const csv = "\\uFEFF" + rows.join('\\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '조편성_결과.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
 
-        /**
-         * 팀 현황 카드 컨테이너를 업데이트합니다.
-         * @param {HTMLElement} container - 업데이트할 컨테이너
-         * @param {Array<string>} teamNames - 팀 이름 목록
-         * @param {Array<number>} teamSizes - 팀 최대 인원 목록
-         * @param {Array<Array<string>>} assignedTeams - 할당된 팀원 목록
-         */
-        function updateTeamCards(container, teamNames, teamSizes, assignedTeams) {
-            container.innerHTML = '';
-            teamNames.forEach((teamName, index) => {
-                const teamMembers = assignedTeams[index] || [];
-                container.appendChild(createTeamCard(teamName, teamSizes[index], teamMembers));
-            });
-        }
-        
-        /**
-         * CSV 내보내기 버튼 클릭 이벤트 핸들러
-         */
-        exportCsvButton.addEventListener('click', () => {
-            const assignedExperienceTeams = getAssignedTeams(experienceTeamsContainer);
-            const assignedDiningTeams = getAssignedTeams(diningTeamsContainer);
-            
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-            
-            csvContent += "식사조\n";
-            assignedDiningTeams.forEach((team, index) => {
-                csvContent += `${diningTeamNames[index]},${team.join(',')}\n`;
-            });
+    resetBtn.addEventListener('click', async () => {
+      const ok = confirm('모든 데이터를 초기화 하시겠습니까?');
+      if (!ok) return;
+      const { error } = await supabase.rpc('reset_all');
+      if (error) alert(error.message || '초기화 실패');
+      else alert('초기화 완료');
+    });
 
-            csvContent += "\n";
-
-            csvContent += "체험조\n";
-            assignedExperienceTeams.forEach((team, index) => {
-                csvContent += `${experienceTeamNames[index]},${team.join(',')}\n`;
-            });
-            
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "조편성_결과.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        });
-
-        /**
-         * 현재 렌더링된 팀원 목록을 가져옵니다.
-         * @param {HTMLElement} container - 팀 컨테이너
-         * @returns {Array<Array<string>>} - 팀별 멤버 목록
-         */
-        function getAssignedTeams(container) {
-            const teams = [];
-            const teamCards = container.querySelectorAll('.card-container');
-            teamCards.forEach(card => {
-                const members = Array.from(card.querySelectorAll('ul li')).map(li => li.textContent);
-                teams.push(members);
-            });
-            return teams;
-        }
-
-        /**
-         * 초기화 버튼 클릭 이벤트 핸들러 (생성자만 가능)
-         */
-        resetButton.addEventListener('click', async () => {
-            if (!currentUser || currentUser.uid !== creatorId) {
-                showMessageBox("이 앱을 초기화할 권한이 없습니다.");
-                return;
-            }
-
-            showMessageBox("모든 데이터를 초기화하는 중입니다. 잠시만 기다려주세요...");
-
-            const membersCollectionRef = collection(db, `artifacts/${appId}/public/data/members`);
-            try {
-                const snapshot = await getDocs(membersCollectionRef);
-                const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, `artifacts/${appId}/public/data/members`, d.id)));
-                await Promise.all(deletePromises);
-                showMessageBox("모든 이름이 성공적으로 초기화되었습니다.");
-                renderInitialStatus();
-            } catch (e) {
-                console.error("Error resetting data: ", e);
-                showMessageBox("초기화에 실패했습니다. 다시 시도해주세요.");
-            }
-        });
-
-        /**
-         * URL 복사 버튼 클릭 이벤트 핸들러
-         */
-        copyLinkButton.addEventListener('click', () => {
-            try {
-                // 이 기능은 iframe 환경에서 보안상의 이유로 제한될 수 있습니다.
-                const url = window.location.href;
-                const tempInput = document.createElement('textarea');
-                tempInput.value = url;
-                document.body.appendChild(tempInput);
-                tempInput.select();
-                document.execCommand('copy');
-                document.body.removeChild(tempInput);
-                showMessageBox("현재 페이지 URL이 복사되었습니다.");
-            } catch (e) {
-                console.error("Failed to copy URL:", e);
-                showMessageBox("URL 복사에 실패했습니다. 직접 복사해주세요.");
-            }
-        });
-    </script>
+    copyUrl.addEventListener('click', () => {
+      navigator.clipboard.writeText(location.href).then(
+        ()=>alert('URL이 복사되었습니다.'),
+        ()=>alert('복사에 실패했습니다. 직접 복사해주세요.')
+      );
+    });
+  </script>
 </body>
 </html>
