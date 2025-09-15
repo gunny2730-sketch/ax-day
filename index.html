@@ -55,7 +55,7 @@
                placeholder="예) 김우진" />
         <button id="assignBtn" class="bg-sky-600 text-white font-semibold px-6 rounded-lg hover:bg-sky-700">배정하기</button>
       </div>
-      <p class="text-xs text-gray-500 mt-2">· URL만 있으면 누구나 입력 가능 · 한 사람이 여러 번 입력하지 않도록 안내 필요</p>
+      <p class="text-xs text-gray-500 mt-2">· 새로고침해도 다시 입력 불가 (같은 브라우저)</p>
     </div>
 
     <div class="flex flex-col gap-8">
@@ -79,8 +79,16 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3ZmJuam1vZmJ2c3plbG5kcG1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc5MTg5OTIsImV4cCI6MjA3MzQ5NDk5Mn0.wnrK_4sVXlmumfs0IIqShSAk9XkEnslu7upzS91j0TQ";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // === LocalStorage 기반 UID 저장 ===
+    let savedUid = localStorage.getItem("axday_uid");
+    if (!savedUid) {
+      savedUid = uuidv4();
+      localStorage.setItem("axday_uid", savedUid);
+    }
+    let user = { id: savedUid };
+    uidBox.textContent = `현재 사용자 ID: ${user.id}`;
+
     // DOM
-    const uidBox = document.getElementById('uidBox');
     const nameInput = document.getElementById('nameInput');
     const assignBtn = document.getElementById('assignBtn');
     const exportCsv = document.getElementById('exportCsv');
@@ -102,10 +110,6 @@
     const dinTeamNames = ['팀 A','팀 B','팀 C','팀 D'];
     const dinSizes     = [6,6,6,4];
 
-    // 랜덤 UID
-    let user = { id: uuidv4() };
-    uidBox.textContent = `현재 사용자 ID: ${user.id}`;
-
     let all = [];
 
     // 초기 로드
@@ -120,8 +124,6 @@
       if (!error) {
         all = data || [];
         renderAll();
-      } else {
-        console.error(error);
       }
     }
 
@@ -212,12 +214,12 @@
       const { error } = await supabase.from('members').insert({
         name,
         user_id: user.id,
-        assigned: true,              // ← 바로 배정
+        assigned: true,
         experience_team: expTeam,
         dining_team: dinTeam
       });
 
-      if (error) { 
+      if (error) {
         if (error.message?.includes('duplicate key value')) {
           alert('이미 등록된 이름입니다.');
         } else {
@@ -227,7 +229,7 @@
       }
 
       nameInput.value = '';
-      await loadMembers(); // ← 즉시 새로고침(Realtime 못 받아도 보장)
+      await loadMembers();
     }
 
     assignBtn.addEventListener('click', addName);
@@ -265,7 +267,7 @@
 
         if (data === 'ok') {
           alert('초기화 완료');
-          await loadMembers();  // 👈 초기화 직후 즉시 반영
+          await loadMembers();
         } else if (data === 'unauthorized') {
           alert('관리자 코드가 올바르지 않습니다.');
         } else if (data === 'no_admin_code_set') {
