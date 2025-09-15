@@ -217,8 +217,17 @@
         dining_team: dinTeam
       });
 
-      if (error) { alert(error.message || '추가 실패'); return; }
+      if (error) { 
+        if (error.message?.includes('duplicate key value')) {
+          alert('이미 등록된 이름입니다.');
+        } else {
+          alert(error.message || '추가 실패');
+        }
+        return;
+      }
+
       nameInput.value = '';
+      await loadMembers(); // ← 즉시 새로고침(Realtime 못 받아도 보장)
     }
 
     assignBtn.addEventListener('click', addName);
@@ -245,16 +254,28 @@
     resetBtn.addEventListener('click', async () => {
       const code = prompt('관리자 코드 입력:');
       if (!code) return;
-      const { data, error } = await supabase.rpc('reset_all_with_code', { p_code: code });
-      if (error) return alert(error.message || '초기화 실패');
-      if (data === 'ok') {
-        alert('초기화 완료');
-      } else if (data === 'unauthorized') {
-        alert('관리자 코드가 올바르지 않습니다.');
-      } else if (data === 'no_admin_code_set') {
-        alert('관리자 코드가 아직 설정되지 않았습니다.(DB app_metadata 확인)');
-      } else {
-        alert('알 수 없는 응답: ' + data);
+
+      resetBtn.disabled = true;
+      const originalText = resetBtn.textContent;
+      resetBtn.textContent = '초기화 중...';
+
+      try {
+        const { data, error } = await supabase.rpc('reset_all_with_code', { p_code: code });
+        if (error) return alert(error.message || '초기화 실패');
+
+        if (data === 'ok') {
+          alert('초기화 완료');
+          await loadMembers();  // 👈 초기화 직후 즉시 반영
+        } else if (data === 'unauthorized') {
+          alert('관리자 코드가 올바르지 않습니다.');
+        } else if (data === 'no_admin_code_set') {
+          alert('관리자 코드가 아직 설정되지 않았습니다.(DB app_metadata 확인)');
+        } else {
+          alert('알 수 없는 응답: ' + data);
+        }
+      } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = originalText;
       }
     });
 
