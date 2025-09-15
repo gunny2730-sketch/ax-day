@@ -76,12 +76,12 @@
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-    // === ① 여기를 본인 프로젝트로 교체하세요 ===
+    // === 프로젝트 정보 교체 ===
     const SUPABASE_URL = "https://ewfbnjmofbvszelndpmm.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3ZmJuam1vZmJ2c3plbG5kcG1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc5MTg5OTIsImV4cCI6MjA3MzQ5NDk5Mn0.wnrK_4sVXlmumfs0IIqShSAk9XkEnslu7upzS91j0TQ";
-    // ===========================================
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.supabase = supabase; // 개발자도구에서도 접근 가능
 
     // DOM refs
     const uidBox = document.getElementById('uidBox');
@@ -99,7 +99,6 @@
     const expContainer = document.getElementById('expContainer');
     const dinContainer = document.getElementById('dinContainer');
 
-    // 팀 정의
     const totalMax = 22;
     const expTeamNames = ['팀 1','팀 2','팀 3','팀 4','팀 5','팀 6'];
     const expSizes     = [4,4,4,4,3,3];
@@ -109,20 +108,30 @@
     let user = null;
     let all = [];
 
-    // 익명 로그인 + 초기 로딩
+    // 👉 익명 로그인 + UID 표시
     (async () => {
       const { data: signData, error: signErr } = await supabase.auth.signInAnonymously();
-      if (signErr) console.error(signErr);
+      if (signErr) console.error("익명 로그인 실패:", signErr);
+
       const got = await supabase.auth.getUser();
       user = got.data.user;
-      uidBox.textContent = `현재 사용자 ID: ${user?.id || '알 수 없음'}`;
+
+      if (user?.id) {
+        uidBox.textContent = `현재 사용자 ID: ${user.id}`;
+        console.log("현재 사용자 UID:", user.id);
+      } else {
+        uidBox.textContent = "UID 불러오기 실패";
+      }
+
       await toggleResetForCreator();
       await loadMembers();
       subscribeRealtime();
     })();
 
     async function toggleResetForCreator() {
-      const { data, error } = await supabase.from('app_metadata').select('*').eq('key','creator').maybeSingle();
+      const { data, error } = await supabase.from('app_metadata')
+        .select('*').eq('key','creator').maybeSingle();
+
       if (!error && data?.value?.uid && data.value.uid === user.id) {
         resetBtn.classList.remove('hidden');
       }
@@ -153,23 +162,23 @@
         const members = grouped[i] || [];
         const card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = \`
+        card.innerHTML = `
           <div class="flex items-center justify-between mb-2">
-            <div class="font-bold">\${nm}</div>
-            <div class="text-xs text-gray-500">\${members.length}/\${sizes[i]}</div>
+            <div class="font-bold">${nm}</div>
+            <div class="text-xs text-gray-500">${members.length}/${sizes[i]}</div>
           </div>
-          <ul class="space-y-1">\${members.map(m=>\`<li class="text-sm text-gray-700 break-words">\${m.name}</li>\`).join('')}</ul>
-        \`;
+          <ul class="space-y-1">${members.map(m=>`<li class="text-sm text-gray-700 break-words">${m.name}</li>`).join('')}</ul>
+        `;
         container.appendChild(card);
       });
     }
 
     function renderAll() {
       const assigned = all.filter(m => m.assigned);
-      totalCount.textContent = \`\${all.length}명\`;
+      totalCount.textContent = `${all.length}명`;
       remain.textContent = Math.max(0, totalMax - all.length);
-      expCount.textContent = \`\${all.length}/22\`;
-      dinCount.textContent = \`\${all.length}/22\`;
+      expCount.textContent = `${all.length}/22`;
+      dinCount.textContent = `${all.length}/22`;
 
       const expGroup = expTeamNames.map(()=>[]);
       const dinGroup = dinTeamNames.map(()=>[]);
@@ -189,11 +198,9 @@
       nameInput.placeholder = disabled ? '이미 이름을 입력하셨습니다.' : '예) 김우진';
     }
 
-    // 배정 로직(본인 레코드만 수정)
     function pickExperienceTeam() {
       const counts = expTeamNames.map((_, i) => all.filter(m => m.assigned && m.experience_team === expTeamNames[i]).length);
-      const avail = expTeamNames
-        .map((nm, i) => ({ i, left: expSizes[i] - counts[i] }))
+      const avail = expTeamNames.map((nm, i) => ({ i, left: expSizes[i] - counts[i] }))
         .filter(x => x.left > 0);
       if (avail.length === 0) return '';
       const maxLeft = Math.max(...avail.map(x => x.left));
@@ -204,11 +211,9 @@
 
     function pickDiningTeam(assignedExpTeam) {
       const dinCounts = dinTeamNames.map((_, i) => all.filter(m => m.assigned && m.dining_team === dinTeamNames[i]).length);
-      const avail = dinTeamNames
-        .map((nm, i) => ({ i, left: dinSizes[i] - dinCounts[i] }))
+      const avail = dinTeamNames.map((nm, i) => ({ i, left: dinSizes[i] - dinCounts[i] }))
         .filter(x => x.left > 0);
       if (avail.length === 0) return '';
-
       const scored = avail.map(a => {
         const inThisTeam = all.filter(m => m.assigned && m.dining_team === dinTeamNames[a.i]);
         const overlap = inThisTeam.filter(m => m.experience_team === assignedExpTeam).length;
@@ -248,14 +253,12 @@
       const rows = [];
       const expMap = expTeamNames.map(nm => all.filter(m => m.assigned && m.experience_team === nm).map(m=>m.name));
       const dinMap = dinTeamNames.map(nm => all.filter(m => m.assigned && m.dining_team === nm).map(m=>m.name));
-
       rows.push('식사조');
       dinTeamNames.forEach((nm, i) => rows.push([nm].concat(dinMap[i]).join(',')));
       rows.push('');
       rows.push('체험조');
       expTeamNames.forEach((nm, i) => rows.push([nm].concat(expMap[i]).join(',')));
-
-      const csv = "\\uFEFF" + rows.join('\\n');
+      const csv = "\uFEFF" + rows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -265,8 +268,7 @@
     });
 
     resetBtn.addEventListener('click', async () => {
-      const ok = confirm('모든 데이터를 초기화 하시겠습니까?');
-      if (!ok) return;
+      if (!confirm('모든 데이터를 초기화 하시겠습니까?')) return;
       const { error } = await supabase.rpc('reset_all');
       if (error) alert(error.message || '초기화 실패');
       else alert('초기화 완료');
@@ -275,7 +277,7 @@
     copyUrl.addEventListener('click', () => {
       navigator.clipboard.writeText(location.href).then(
         ()=>alert('URL이 복사되었습니다.'),
-        ()=>alert('복사에 실패했습니다. 직접 복사해주세요.')
+        ()=>alert('복사 실패: 직접 복사해주세요.')
       );
     });
   </script>
