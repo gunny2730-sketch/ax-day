@@ -79,6 +79,20 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3ZmJuam1vZmJ2c3plbG5kcG1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc5MTg5OTIsImV4cCI6MjA3MzQ5NDk5Mn0.wnrK_4sVXlmumfs0IIqShSAk9XkEnslu7upzS91j0TQ";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // ── DOM 먼저 선택 ─────────────────────────────────────────────
+    const uidBox       = document.getElementById('uidBox');
+    const nameInput    = document.getElementById('nameInput');
+    const assignBtn    = document.getElementById('assignBtn');
+    const exportCsv    = document.getElementById('exportCsv');
+    const resetBtn     = document.getElementById('resetBtn');
+    const copyUrl      = document.getElementById('copyUrl');
+    const expCount     = document.getElementById('expCount');
+    const dinCount     = document.getElementById('dinCount');
+    const totalCount   = document.getElementById('totalCount');
+    const remain       = document.getElementById('remain');
+    const expContainer = document.getElementById('expContainer');
+    const dinContainer = document.getElementById('dinContainer');
+
     // === LocalStorage 기반 UID 저장 ===
     let savedUid = localStorage.getItem("axday_uid");
     if (!savedUid) {
@@ -88,38 +102,23 @@
     let user = { id: savedUid };
     uidBox.textContent = `현재 사용자 ID: ${user.id}`;
 
-    // DOM
-    const nameInput = document.getElementById('nameInput');
-    const assignBtn = document.getElementById('assignBtn');
-    const exportCsv = document.getElementById('exportCsv');
-    const resetBtn = document.getElementById('resetBtn');
-    const copyUrl = document.getElementById('copyUrl');
-
-    const expCount = document.getElementById('expCount');
-    const dinCount = document.getElementById('dinCount');
-    const totalCount = document.getElementById('totalCount');
-    const remain = document.getElementById('remain');
-
-    const expContainer = document.getElementById('expContainer');
-    const dinContainer = document.getElementById('dinContainer');
-
-    // ===== 팀 정의 (최신 요청 반영) =====
-    // 식사조: 6,6,5,4  → 합계 21
+    // ===== 팀 정의 (최종 요청 반영) =====
+    // 식사조: 5, 6, 5, 5  → 합계 21
     const dinTeamNames = ['팀 A','팀 B','팀 C','팀 D'];
-    const dinSizes     = [5,6,5,5];
+    const dinSizes     = [5, 6, 5, 5];
 
-    // 체험조: 4,4,3,4,3,3 (“443433”) → 합계 21
+    // 체험조: 4, 3, 4, 4, 3, 3 → 합계 21 (팀2=3명)
     const expTeamNames = ['팀 1','팀 2','팀 3','팀 4','팀 5','팀 6'];
-    const expSizes     = [4,3,4,4,3,3];
+    const expSizes     = [4, 3, 4, 4, 3, 3];
 
-    // 영역별 정원 합계와 총 정원(두 영역 중 더 작은 값 사용)
+    // 영역 정원 및 총 정원(두 영역 중 더 작은 값 사용)
     const EXP_CAP   = expSizes.reduce((a,b)=>a+b,0); // 21
     const DIN_CAP   = dinSizes.reduce((a,b)=>a+b,0); // 21
     const TOTAL_CAP = Math.min(EXP_CAP, DIN_CAP);    // 21
 
     let all = [];
 
-    // 초기 로드
+    // 초기 로드 & 실시간 구독
     await loadMembers();
     subscribeRealtime();
 
@@ -131,6 +130,9 @@
       if (!error) {
         all = data || [];
         renderAll();
+      } else {
+        console.error(error);
+        alert(error.message || '데이터 로드 실패');
       }
     }
 
@@ -166,13 +168,12 @@
       totalCount.textContent = `${assignedCount}명`;
       remain.textContent = Math.max(0, TOTAL_CAP - assignedCount);
 
-      // 상단 요약: 현재 참여 인원 / 각 영역 정원
+      // 상단 요약(현재 인원 / 정원 합계)
       expCount.textContent = `${Math.min(assignedCount, EXP_CAP)}/${EXP_CAP}`;
       dinCount.textContent = `${Math.min(assignedCount, DIN_CAP)}/${DIN_CAP}`;
 
       const expGroup = expTeamNames.map(()=>[]);
       const dinGroup = dinTeamNames.map(()=>[]);
-
       for (const m of assigned) {
         const ei = expTeamNames.indexOf(m.experience_team);
         if (ei >= 0) expGroup[ei].push(m);
@@ -186,7 +187,6 @@
       const mine = all.find(m => m.user_id === user.id);
       const isFull = assignedCount >= TOTAL_CAP;
       const disabled = !!mine || isFull;
-
       nameInput.disabled = disabled;
       assignBtn.disabled = disabled;
       nameInput.placeholder = mine
@@ -195,12 +195,12 @@
     }
 
     function pickExperienceTeam() {
-      // 남은 자리가 있는 팀 중: 남은 자리 최다 → 무작위
+      // 남은 자리 최다 팀 중 무작위
       const counts = expTeamNames.map((_, i) =>
         all.filter(m => m.assigned && m.experience_team === expTeamNames[i]).length
       );
       const avail = expTeamNames.map((nm, i) => ({ i, left: expSizes[i] - counts[i] }))
-        .filter(x => x.left > 0); // 이미 넘친 팀은 제외
+        .filter(x => x.left > 0);
       if (avail.length === 0) return '';
       const maxLeft = Math.max(...avail.map(x => x.left));
       const candidates = avail.filter(x => x.left === maxLeft);
@@ -259,6 +259,9 @@
       nameInput.value = '';
       await loadMembers();
     }
+
+    assignBtn.addEventListener('click', addName);
+    nameInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') addName(); });
 
     exportCsv.addEventListener('click', () => {
       const rows = [];
