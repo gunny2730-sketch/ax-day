@@ -32,19 +32,19 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
       <div class="bg-blue-50 p-4 rounded-xl text-center border border-blue-100">
         <p class="text-sm text-gray-500">체험조 정원</p>
-        <p id="expCount" class="text-2xl font-bold text-blue-600">0/22</p>
+        <p id="expCount" class="text-2xl font-bold text-blue-600">—</p>
       </div>
       <div class="bg-orange-50 p-4 rounded-xl text-center border border-orange-100">
         <p class="text-sm text-gray-500">식사조 정원</p>
-        <p id="dinCount" class="text-2xl font-bold text-orange-600">0/22</p>
+        <p id="dinCount" class="text-2xl font-bold text-orange-600">—</p>
       </div>
       <div class="bg-sky-50 p-4 rounded-xl text-center border border-sky-100">
         <p class="text-sm text-gray-500">총 인원</p>
-        <p id="totalCount" class="text-2xl font-bold text-sky-600">0명</p>
+        <p id="totalCount" class="text-2xl font-bold text-sky-600">—</p>
       </div>
       <div class="bg-gray-50 p-4 rounded-xl text-center border border-gray-100">
         <p class="text-sm text-gray-500">남은 좌석</p>
-        <p id="remain" class="text-2xl font-bold">22</p>
+        <p id="remain" class="text-2xl font-bold">—</p>
       </div>
     </div>
 
@@ -103,12 +103,19 @@
     const expContainer = document.getElementById('expContainer');
     const dinContainer = document.getElementById('dinContainer');
 
-    // 팀 정의
-    const totalMax = 22;
-    const expTeamNames = ['팀 1','팀 2','팀 3','팀 4','팀 5','팀 6'];
-    const expSizes     = [4,4,4,4,3,3];
+    // ===== 팀 정의 (최신 요청 반영) =====
+    // 식사조: 6,6,5,4  → 합계 21
     const dinTeamNames = ['팀 A','팀 B','팀 C','팀 D'];
-    const dinSizes     = [6,6,6,4];
+    const dinSizes     = [6,6,5,4];
+
+    // 체험조: 4,4,3,4,3,3 (“443433”) → 합계 21
+    const expTeamNames = ['팀 1','팀 2','팀 3','팀 4','팀 5','팀 6'];
+    const expSizes     = [4,3,4,4,3,3];
+
+    // 영역별 정원 합계와 총 정원(두 영역 중 더 작은 값 사용)
+    const EXP_CAP   = expSizes.reduce((a,b)=>a+b,0); // 21
+    const DIN_CAP   = dinSizes.reduce((a,b)=>a+b,0); // 21
+    const TOTAL_CAP = Math.min(EXP_CAP, DIN_CAP);    // 21
 
     let all = [];
 
@@ -154,13 +161,18 @@
 
     function renderAll() {
       const assigned = all.filter(m => m.assigned);
-      totalCount.textContent = `${all.length}명`;
-      remain.textContent = Math.max(0, totalMax - all.length);
-      expCount.textContent = `${all.length}/22`;
-      dinCount.textContent = `${all.length}/22`;
+      const assignedCount = assigned.length;
+
+      totalCount.textContent = `${assignedCount}명`;
+      remain.textContent = Math.max(0, TOTAL_CAP - assignedCount);
+
+      // 상단 요약: 현재 참여 인원 / 각 영역 정원
+      expCount.textContent = `${Math.min(assignedCount, EXP_CAP)}/${EXP_CAP}`;
+      dinCount.textContent = `${Math.min(assignedCount, DIN_CAP)}/${DIN_CAP}`;
 
       const expGroup = expTeamNames.map(()=>[]);
       const dinGroup = dinTeamNames.map(()=>[]);
+
       for (const m of assigned) {
         const ei = expTeamNames.indexOf(m.experience_team);
         if (ei >= 0) expGroup[ei].push(m);
@@ -170,17 +182,25 @@
       renderCards(expContainer, expTeamNames, expSizes, expGroup);
       renderCards(dinContainer, dinTeamNames, dinSizes, dinGroup);
 
+      // 입력 제한
       const mine = all.find(m => m.user_id === user.id);
-      const disabled = !!mine;
+      const isFull = assignedCount >= TOTAL_CAP;
+      const disabled = !!mine || isFull;
+
       nameInput.disabled = disabled;
       assignBtn.disabled = disabled;
-      nameInput.placeholder = disabled ? '이미 이름을 입력하셨습니다.' : '예) 김우진';
+      nameInput.placeholder = mine
+        ? '이미 이름을 입력하셨습니다.'
+        : (isFull ? '정원이 마감되었습니다.' : '예) 김우진');
     }
 
     function pickExperienceTeam() {
-      const counts = expTeamNames.map((_, i) => all.filter(m => m.assigned && m.experience_team === expTeamNames[i]).length);
+      // 남은 자리가 있는 팀 중: 남은 자리 최다 → 무작위
+      const counts = expTeamNames.map((_, i) =>
+        all.filter(m => m.assigned && m.experience_team === expTeamNames[i]).length
+      );
       const avail = expTeamNames.map((nm, i) => ({ i, left: expSizes[i] - counts[i] }))
-        .filter(x => x.left > 0);
+        .filter(x => x.left > 0); // 이미 넘친 팀은 제외
       if (avail.length === 0) return '';
       const maxLeft = Math.max(...avail.map(x => x.left));
       const candidates = avail.filter(x => x.left === maxLeft);
@@ -189,7 +209,10 @@
     }
 
     function pickDiningTeam(assignedExpTeam) {
-      const dinCounts = dinTeamNames.map((_, i) => all.filter(m => m.assigned && m.dining_team === dinTeamNames[i]).length);
+      // 같은 체험팀과의 겹침 최소화 → 동률이면 남은 자리 많은 팀
+      const dinCounts = dinTeamNames.map((_, i) =>
+        all.filter(m => m.assigned && m.dining_team === dinTeamNames[i]).length
+      );
       const avail = dinTeamNames.map((nm, i) => ({ i, left: dinSizes[i] - dinCounts[i] }))
         .filter(x => x.left > 0);
       if (avail.length === 0) return '';
@@ -205,11 +228,16 @@
     async function addName() {
       const name = nameInput.value.trim();
       if (!name) return alert('이름을 입력해주세요.');
-      if (all.length >= totalMax) return alert('모든 좌석이 채워졌습니다.');
+
+      const assignedCount = all.filter(m => m.assigned).length;
+      if (assignedCount >= TOTAL_CAP) return alert('모든 좌석이 채워졌습니다.');
       if (all.some(m => m.name === name)) return alert('이미 존재하는 이름입니다.');
 
       const expTeam = pickExperienceTeam();
+      if (!expTeam) return alert('체험조 정원이 가득 찼습니다.');
+
       const dinTeam = pickDiningTeam(expTeam);
+      if (!dinTeam) return alert('식사조 정원이 가득 찼습니다.');
 
       const { error } = await supabase.from('members').insert({
         name,
@@ -231,9 +259,6 @@
       nameInput.value = '';
       await loadMembers();
     }
-
-    assignBtn.addEventListener('click', addName);
-    nameInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') addName(); });
 
     exportCsv.addEventListener('click', () => {
       const rows = [];
